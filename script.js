@@ -567,3 +567,23 @@ clearPgnBtn.addEventListener("click", () => {
 renderBoard();
 applyTimePreset();
 maybeMakeAIMove();
+
+function renderEmptyBoard() {
+  const board = document.getElementById("chessboard");
+  if (!board) {
+    console.error("Chessboard not found");
+    return;
+  }
+
+  board.innerHTML = "";
+
+  for (let i = 0; i < 64; i++) {
+    const square = document.createElement("div");
+    square.className = "square " + ((Math.floor(i / 8) + i) % 2 === 0 ? "light" : "dark");
+    board.appendChild(square);
+  }
+
+  console.log("Board rendered:", board.children.length);
+}
+
+document.addEventListener("DOMContentLoaded", renderEmptyBoard);

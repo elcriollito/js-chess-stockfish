@@ -568,6 +568,10 @@ renderBoard();
 applyTimePreset();
 maybeMakeAIMove();
 
+
+}
+
+document.addEventListener("DOMContentLoaded", renderEmptyBoard);
 function renderEmptyBoard() {
   const board = document.getElementById("chessboard");
   if (!board) {
@@ -577,13 +581,21 @@ function renderEmptyBoard() {
 
   board.innerHTML = "";
 
-  for (let i = 0; i < 64; i++) {
-    const square = document.createElement("div");
-    square.className = "square " + ((Math.floor(i / 8) + i) % 2 === 0 ? "light" : "dark");
-    board.appendChild(square);
+  for (let row = 0; row < 8; row++) {
+    for (let col = 0; col < 8; col++) {
+      const square = document.createElement("div");
+      square.classList.add("square");
+
+      const isWhite = (row + col) % 2 === 0;
+      square.classList.add(isWhite ? "white" : "black");
+
+      board.appendChild(square);
+    }
   }
 
-  console.log("Board rendered:", board.children.length);
+  console.log("Board rendered squares:", board.children.length);
 }
 
-document.addEventListener("DOMContentLoaded", renderEmptyBoard);
+
+
+

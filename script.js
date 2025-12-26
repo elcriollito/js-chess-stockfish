@@ -1,42 +1,43 @@
 // ============================
 // DOM
 // ============================
-const chessboard = document.getElementById("chessboard");
-const playVsAIEl = document.getElementById("playVsAI");
-const aiColorEl = document.getElementById("aiColor");
-const difficultyEl = document.getElementById("difficulty");
-const depthEl = document.getElementById("depth");
-const analyzeBtn = document.getElementById("analyzeBtn");
-const undoBtn = document.getElementById("undoBtn");
-const newGameBtn = document.getElementById("newGameBtn");
-const flipBoardEl = document.getElementById("flipBoard");
+let chessboard = null;
+let playVsAIEl = null;
+let aiColorEl = null;
+let difficultyEl = null;
+let depthEl = null;
+let analyzeBtn = null;
+let undoBtn = null;
+let newGameBtn = null;
+let flipBoardEl = null;
 
-const evalText = document.getElementById("evalText");
-const pvText = document.getElementById("pvText");
-const evalBar = document.getElementById("evalBar");
+let evalText = null;
+let pvText = null;
+let evalBar = null;
 
-const moveListEl = document.getElementById("moveList");
-const pgnBox = document.getElementById("pgnBox");
-const exportPgnBtn = document.getElementById("exportPgnBtn");
-const importPgnBtn = document.getElementById("importPgnBtn");
-const copyPgnBtn = document.getElementById("copyPgnBtn");
-const clearPgnBtn = document.getElementById("clearPgnBtn");
+let moveListEl = null;
+let pgnBox = null;
+let exportPgnBtn = null;
+let importPgnBtn = null;
+let copyPgnBtn = null;
+let clearPgnBtn = null;
 
 // Replay buttons
-const toStartBtn = document.getElementById("toStartBtn");
-const backBtn = document.getElementById("backBtn");
-const forwardBtn = document.getElementById("forwardBtn");
-const toEndBtn = document.getElementById("toEndBtn");
+let toStartBtn = null;
+let backBtn = null;
+let forwardBtn = null;
+let toEndBtn = null;
 
 // Clock DOM
-const whiteClockEl = document.getElementById("whiteClock");
-const blackClockEl = document.getElementById("blackClock");
-const timePresetEl = document.getElementById("timePreset");
-const applyTimeBtn = document.getElementById("applyTimeBtn");
+let whiteClockEl = null;
+let blackClockEl = null;
+let timePresetEl = null;
+let applyTimeBtn = null;
 
 // Promotion modal
-const promoModal = document.getElementById("promoModal");
-const promoButtons = promoModal.querySelectorAll("button[data-piece]");
+let promoModal = null;
+let promoButtons = null;
+let workerWarningEl = null;
 
 // ============================
 // Game state
@@ -108,39 +109,61 @@ function applyTimePreset() {
   startClock();
 }
 
-applyTimeBtn.addEventListener("click", applyTimePreset);
-
 // ============================
 // Stockfish (Worker)
 // ============================
-const sf = new Worker("stockfish.worker.js");
-function sfSend(cmd) {
-  sf.postMessage(cmd);
-}
-
+let sf = null;
 let bestMoveResolver = null;
 
-sf.addEventListener("message", (e) => {
-  const line = (e.data || "").toString();
-
-  if (line.startsWith("info ")) {
-    const info = parseInfoLine(line);
-    if (info.pv) pvText.textContent = info.pv;
-    if (info.cp !== null || info.mate !== null) {
-      updateEvalUI(info.cp ?? 0, info.mate);
-    }
+function initWorker() {
+  try {
+    console.log("[chess] starting Stockfish worker");
+    sf = new Worker("./stockfish.worker.js");
+  } catch (err) {
+    console.error("[chess] failed to start Stockfish worker:", err);
+    showWorkerWarning();
+    sf = null;
     return;
   }
 
-  if (line.startsWith("bestmove")) {
-    const move = line.split(" ")[1];
-    if (bestMoveResolver) {
-      const r = bestMoveResolver;
-      bestMoveResolver = null;
-      r(move);
+  sf.addEventListener("message", (e) => {
+    const line = (e.data || "").toString();
+    if (line === "uciok") {
+      console.log("[chess] stockfish uciok");
     }
+    if (line === "readyok") {
+      console.log("[chess] stockfish readyok");
+    }
+
+    if (line.startsWith("info ")) {
+      const info = parseInfoLine(line);
+      if (info.pv) pvText.textContent = info.pv;
+      if (info.cp !== null || info.mate !== null) {
+        updateEvalUI(info.cp ?? 0, info.mate);
+      }
+      return;
+    }
+
+    if (line.startsWith("bestmove")) {
+      const move = line.split(" ")[1];
+      if (bestMoveResolver) {
+        const r = bestMoveResolver;
+        bestMoveResolver = null;
+        r(move);
+      }
+    }
+  });
+}
+
+function sfSend(cmd) {
+  if (!sf) return;
+  try {
+    sf.postMessage(cmd);
+  } catch (err) {
+    console.error("[chess] failed to post to worker:", err);
+    showWorkerWarning();
   }
-});
+}
 
 // ============================
 // Pieces (Unicode)
@@ -165,6 +188,13 @@ const PIECES = {
 // ============================
 function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
+}
+
+function showWorkerWarning() {
+  if (!workerWarningEl) return;
+  workerWarningEl.textContent =
+    "Stockfish blocked by CSP. Board remains usable without engine.";
+  workerWarningEl.classList.remove("hidden");
 }
 
 function clearHighlights() {
@@ -216,26 +246,33 @@ function applyDifficultyPreset() {
   depthEl.value = depth;
   sfSend("setoption name Skill Level value " + skill);
 }
-difficultyEl.addEventListener("change", applyDifficultyPreset);
-applyDifficultyPreset();
 
 // ============================
 // Render board (flip + review)
 // ============================
 function buildTempGame() {
-    // Clone current position from the real game
-  const temp = new Chess(game.fen());
+  const tempGame = new Chess(game.fen());
 
-
-  for (let i = 0; i < viewIndex; i++) temp.move(mainlineSAN[i]);
-  return temp;
+  for (let i = 0; i < viewIndex; i++) tempGame.move(mainlineSAN[i]);
+  return tempGame;
 }
 
 function renderBoard() {
+  console.log("[chess] renderBoard start");
   chessboard.innerHTML = "";
 
-  const temp = buildTempGame();
-  const board = temp.board();
+  let board = null;
+  try {
+    const tempGame = buildTempGame();
+    board = tempGame.board();
+  } catch (err) {
+    console.warn("[chess] failed to build board from game, using empty board", err);
+  }
+  if (!board) {
+    board = Array.from({ length: 8 }, () =>
+      Array.from({ length: 8 }, () => null),
+    );
+  }
   const flipped = flipBoardEl.checked;
 
   for (let r = 0; r < 8; r++) {
@@ -271,9 +308,11 @@ function renderBoard() {
   }
 
   renderMoveList();
+  console.log("[chess] renderBoard end; squares:", chessboard.children.length);
+  if (chessboard.children.length === 64) {
+    console.log("Board rendered: 64");
+  }
 }
-
-flipBoardEl.addEventListener("change", renderBoard);
 
 // ============================
 // Move list clickable
@@ -303,11 +342,6 @@ function goToIndex(idx) {
   clearHighlights();
   renderBoard();
 }
-
-toStartBtn.addEventListener("click", () => goToIndex(0));
-backBtn.addEventListener("click", () => goToIndex(viewIndex - 1));
-forwardBtn.addEventListener("click", () => goToIndex(viewIndex + 1));
-toEndBtn.addEventListener("click", () => goToIndex(mainlineSAN.length));
 
 // ============================
 // Highlight legal moves
@@ -344,21 +378,6 @@ function closePromotionModal() {
   promoModal.classList.add("hidden");
   pendingPromotion = null;
 }
-
-promoButtons.forEach((btn) => {
-  btn.addEventListener("click", () => {
-    if (!pendingPromotion) return;
-    const promo = btn.dataset.piece; // q r b n
-
-    makeMove(pendingPromotion.from, pendingPromotion.to, promo);
-    closePromotionModal();
-  });
-});
-
-// click outside to close
-promoModal.addEventListener("click", (e) => {
-  if (e.target === promoModal) closePromotionModal();
-});
 
 // ============================
 // Make move (handles increment + updates lists)
@@ -422,6 +441,7 @@ function onSquareClick(square) {
 // Engine move
 // ============================
 function getBestMoveFromStockfish(fen, depth) {
+  if (!sf) return Promise.resolve(null);
   return new Promise((resolve) => {
     bestMoveResolver = resolve;
     pvText.textContent = "Thinking...";
@@ -463,139 +483,167 @@ async function maybeMakeAIMove() {
   renderBoard();
 }
 
-aiColorEl.addEventListener("change", () => {
-  selectedSquare = null;
-  clearHighlights();
-  maybeMakeAIMove();
-});
-
-// ============================
-// Analyze (no move)
-// ============================
-analyzeBtn.addEventListener("click", () => {
-  const depth = clamp(Number(depthEl.value) || 12, 1, 20);
-  pvText.textContent = "Analyzing...";
-  sfSend("uci");
-  sfSend("isready");
-  sfSend("position fen " + game.fen());
-  sfSend("go depth " + depth);
-});
-
-// ============================
-// Undo + New game
-// ============================
-undoBtn.addEventListener("click", () => {
-  if (mainlineSAN.length === 0) return;
-
-  // Undo one ply
-  const last = game.undo();
-
-  // If AI is enabled and after undo it's still AI turn, undo again
-  if (playVsAIEl.checked && game.turn() === aiColorEl.value) {
-    game.undo();
-  }
-
-  // We won't perfectly restore time per move here (advanced feature).
-  // Simple approach: keep clocks running; you can reset with Apply Time if needed.
-
-  mainlineSAN = game.history();
-  viewIndex = mainlineSAN.length;
-
-  selectedSquare = null;
-  clearHighlights();
-  renderBoard();
-});
-
-newGameBtn.addEventListener("click", () => {
-  game.reset();
-  mainlineSAN = [];
-  viewIndex = 0;
-  selectedSquare = null;
-  clearHighlights();
-  evalText.textContent = "—";
-  pvText.textContent = "—";
-  evalBar.style.height = "50%";
-  renderBoard();
-  applyTimePreset();
-  maybeMakeAIMove();
-});
-
-// ============================
-// PGN
-// ============================
-exportPgnBtn.addEventListener("click", () => {
-  pgnBox.value = game.pgn();
-});
-
-importPgnBtn.addEventListener("click", () => {
-  const pgn = pgnBox.value.trim();
-  if (!pgn) return;
-
-  const ok = game.load_pgn(pgn);
-  if (!ok) {
-    alert("Invalid PGN");
-    return;
-  }
-
-  mainlineSAN = game.history();
-  viewIndex = mainlineSAN.length;
-
-  selectedSquare = null;
-  clearHighlights();
-  renderBoard();
-  maybeMakeAIMove();
-});
-
-copyPgnBtn.addEventListener("click", async () => {
-  const text = pgnBox.value.trim() || game.pgn();
-  if (!text) return;
-  try {
-    await navigator.clipboard.writeText(text);
-    alert("PGN copied!");
-  } catch {
-    alert("Copy failed (clipboard blocked).");
-  }
-});
-
-clearPgnBtn.addEventListener("click", () => {
-  pgnBox.value = "";
-});
-
 // ============================
 // Start
 // ============================
-renderBoard();
-applyTimePreset();
-maybeMakeAIMove();
+function initApp() {
+  console.log("[chess] init start");
+  chessboard = document.getElementById("chessboard");
+  playVsAIEl = document.getElementById("playVsAI");
+  aiColorEl = document.getElementById("aiColor");
+  difficultyEl = document.getElementById("difficulty");
+  depthEl = document.getElementById("depth");
+  analyzeBtn = document.getElementById("analyzeBtn");
+  undoBtn = document.getElementById("undoBtn");
+  newGameBtn = document.getElementById("newGameBtn");
+  flipBoardEl = document.getElementById("flipBoard");
+  evalText = document.getElementById("evalText");
+  pvText = document.getElementById("pvText");
+  evalBar = document.getElementById("evalBar");
+  moveListEl = document.getElementById("moveList");
+  pgnBox = document.getElementById("pgnBox");
+  exportPgnBtn = document.getElementById("exportPgnBtn");
+  importPgnBtn = document.getElementById("importPgnBtn");
+  copyPgnBtn = document.getElementById("copyPgnBtn");
+  clearPgnBtn = document.getElementById("clearPgnBtn");
+  toStartBtn = document.getElementById("toStartBtn");
+  backBtn = document.getElementById("backBtn");
+  forwardBtn = document.getElementById("forwardBtn");
+  toEndBtn = document.getElementById("toEndBtn");
+  whiteClockEl = document.getElementById("whiteClock");
+  blackClockEl = document.getElementById("blackClock");
+  timePresetEl = document.getElementById("timePreset");
+  applyTimeBtn = document.getElementById("applyTimeBtn");
+  promoModal = document.getElementById("promoModal");
+  promoButtons = promoModal.querySelectorAll("button[data-piece]");
+  workerWarningEl = document.getElementById("workerWarning");
 
-
-}
-
-document.addEventListener("DOMContentLoaded", renderEmptyBoard);
-function renderEmptyBoard() {
-  const board = document.getElementById("chessboard");
-  if (!board) {
-    console.error("Chessboard not found");
+  if (!chessboard) {
+    console.error("[chess] chessboard element not found.");
     return;
   }
 
-  board.innerHTML = "";
+  console.log("[chess] chessboard found:", !!chessboard);
 
-  for (let row = 0; row < 8; row++) {
-    for (let col = 0; col < 8; col++) {
-      const square = document.createElement("div");
-      square.classList.add("square");
-
-      const isWhite = (row + col) % 2 === 0;
-      square.classList.add(isWhite ? "white" : "black");
-
-      board.appendChild(square);
+  applyTimeBtn.addEventListener("click", applyTimePreset);
+  difficultyEl.addEventListener("change", applyDifficultyPreset);
+  flipBoardEl.addEventListener("change", renderBoard);
+  toStartBtn.addEventListener("click", () => goToIndex(0));
+  backBtn.addEventListener("click", () => goToIndex(viewIndex - 1));
+  forwardBtn.addEventListener("click", () => goToIndex(viewIndex + 1));
+  toEndBtn.addEventListener("click", () => goToIndex(mainlineSAN.length));
+  aiColorEl.addEventListener("change", () => {
+    selectedSquare = null;
+    clearHighlights();
+    maybeMakeAIMove();
+  });
+  analyzeBtn.addEventListener("click", () => {
+    if (!sf) {
+      alert("Stockfish is unavailable (worker blocked).");
+      return;
     }
-  }
+    const depth = clamp(Number(depthEl.value) || 12, 1, 20);
+    pvText.textContent = "Analyzing...";
+    sfSend("uci");
+    sfSend("isready");
+    sfSend("position fen " + game.fen());
+    sfSend("go depth " + depth);
+  });
+  undoBtn.addEventListener("click", () => {
+    if (mainlineSAN.length === 0) return;
 
-  console.log("Board rendered squares:", board.children.length);
+    // Undo one ply
+    game.undo();
+
+    // If AI is enabled and after undo it's still AI turn, undo again
+    if (playVsAIEl.checked && game.turn() === aiColorEl.value) {
+      game.undo();
+    }
+
+    mainlineSAN = game.history();
+    viewIndex = mainlineSAN.length;
+
+    selectedSquare = null;
+    clearHighlights();
+    renderBoard();
+  });
+
+  newGameBtn.addEventListener("click", () => {
+    game.reset();
+    mainlineSAN = [];
+    viewIndex = 0;
+    selectedSquare = null;
+    clearHighlights();
+    evalText.textContent = "—";
+    pvText.textContent = "—";
+    evalBar.style.height = "50%";
+    renderBoard();
+    applyTimePreset();
+    maybeMakeAIMove();
+  });
+
+  exportPgnBtn.addEventListener("click", () => {
+    pgnBox.value = game.pgn();
+  });
+
+  importPgnBtn.addEventListener("click", () => {
+    const pgn = pgnBox.value.trim();
+    if (!pgn) return;
+
+    const ok = game.load_pgn(pgn);
+    if (!ok) {
+      alert("Invalid PGN");
+      return;
+    }
+
+    mainlineSAN = game.history();
+    viewIndex = mainlineSAN.length;
+
+    selectedSquare = null;
+    clearHighlights();
+    renderBoard();
+    maybeMakeAIMove();
+  });
+
+  copyPgnBtn.addEventListener("click", async () => {
+    const text = pgnBox.value.trim() || game.pgn();
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      alert("PGN copied!");
+    } catch {
+      alert("Copy failed (clipboard blocked).");
+    }
+  });
+
+  clearPgnBtn.addEventListener("click", () => {
+    pgnBox.value = "";
+  });
+
+  promoButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (!pendingPromotion) return;
+      const promo = btn.dataset.piece; // q r b n
+
+      makeMove(pendingPromotion.from, pendingPromotion.to, promo);
+      closePromotionModal();
+    });
+  });
+
+  // click outside to close
+  promoModal.addEventListener("click", (e) => {
+    if (e.target === promoModal) closePromotionModal();
+  });
+
+  initWorker();
+  applyDifficultyPreset();
+  renderBoard();
+  applyTimePreset();
+  maybeMakeAIMove();
 }
 
-
-
-
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initApp);
+} else {
+  initApp();
+}

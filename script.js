@@ -223,9 +223,9 @@ applyDifficultyPreset();
 // Render board (flip + review)
 // ============================
 function buildTempGame() {
-  const temp = new Chess();
-  const chess = game
+    // Clone current position from the real game
   const temp = new Chess(game.fen());
+
 
   for (let i = 0; i < viewIndex; i++) temp.move(mainlineSAN[i]);
   return temp;

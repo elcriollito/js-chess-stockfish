@@ -5,7 +5,7 @@
   <title>JavaScript Chess + Stockfish</title>
 
   <!-- chess.js MUST load first -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/1.0.0/chess.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/1.0.0/chess.min.js" defer></script>
 
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -13,8 +13,115 @@
 <body>
   <h1>JavaScript Chess + Stockfish AI</h1>
 
-  <!-- MUST match script.js -->
-  <div id="chessboard"></div>
+  <div class="controls">
+    <label class="ctrl">
+      <input type="checkbox" id="playVsAI" checked />
+      Play vs AI
+    </label>
+    <label class="ctrl">
+      AI Color
+      <select id="aiColor">
+        <option value="b">Black</option>
+        <option value="w">White</option>
+      </select>
+    </label>
+    <label class="ctrl">
+      Difficulty
+      <select id="difficulty">
+        <option value="easy">Easy</option>
+        <option value="medium" selected>Medium</option>
+        <option value="hard">Hard</option>
+      </select>
+    </label>
+    <label class="ctrl">
+      Depth
+      <input type="number" id="depth" min="1" max="20" value="12" />
+    </label>
+    <button id="analyzeBtn">Analyze</button>
+    <label class="ctrl">
+      <input type="checkbox" id="flipBoard" />
+      Flip Board
+    </label>
+    <button id="undoBtn">Undo</button>
+    <button id="newGameBtn">New Game</button>
+  </div>
+
+  <div class="clock-bar">
+    <div class="clock-box">
+      <div class="clock-title">White</div>
+      <div class="clock-time" id="whiteClock">05:00</div>
+    </div>
+    <div class="clock-box">
+      <div class="clock-title">Black</div>
+      <div class="clock-time" id="blackClock">05:00</div>
+    </div>
+    <div class="time-setup">
+      <div class="clock-title">Time Control</div>
+      <select id="timePreset">
+        <option value="300|0">5 + 0</option>
+        <option value="300|5">5 + 5</option>
+        <option value="600|5">10 + 5</option>
+        <option value="900|10">15 + 10</option>
+      </select>
+      <button id="applyTimeBtn">Apply Time</button>
+    </div>
+  </div>
+
+  <div class="layout">
+    <div class="left">
+      <!-- MUST match script.js -->
+      <div id="chessboard"></div>
+      <div id="workerWarning" class="hidden worker-warning"></div>
+      <div class="replay">
+        <button id="toStartBtn" title="Go to start">|&lt;</button>
+        <button id="backBtn" title="Back">&lt;</button>
+        <button id="forwardBtn" title="Forward">&gt;</button>
+        <button id="toEndBtn" title="Go to end">&gt;|</button>
+      </div>
+    </div>
+
+    <div class="right">
+      <div class="analysis">
+        <div class="eval-bar-wrap">
+          <div id="evalBar"></div>
+        </div>
+        <div class="analysis-panel">
+          <div class="panel-title">Evaluation</div>
+          <div id="evalText">—</div>
+          <div class="pv-title">Principal Variation</div>
+          <div id="pvText">—</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">Moves</div>
+        <div class="move-list" id="moveList"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">PGN</div>
+        <div class="pgn-buttons">
+          <button id="exportPgnBtn">Export</button>
+          <button id="importPgnBtn">Import</button>
+          <button id="copyPgnBtn">Copy</button>
+          <button id="clearPgnBtn">Clear</button>
+        </div>
+        <textarea id="pgnBox" placeholder="Game PGN..."></textarea>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="promoModal">
+    <div class="modal-box">
+      <div class="modal-title">Promote to</div>
+      <div class="promo-buttons">
+        <button data-piece="q">Queen</button>
+        <button data-piece="r">Rook</button>
+        <button data-piece="b">Bishop</button>
+        <button data-piece="n">Knight</button>
+      </div>
+    </div>
+  </div>
 
   <!-- your app logic -->
   <script src="script.js" defer></script>
